@@ -3,19 +3,13 @@ pub extern crate tonic;
 
 pub use error::ConnectError;
 use error::InternalConnectError;
-use http_body::combinators::UnsyncBoxBody;
-use hyper::client::HttpConnector;
 use hyper::Uri;
-use hyper_rustls::HttpsConnector;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use tonic::codegen::{Bytes, InterceptedService};
-use tonic::Status;
+use tonic::codegen::InterceptedService;
+use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint};
 
-type Service = InterceptedService<
-    hyper::Client<HttpsConnector<HttpConnector>, UnsyncBoxBody<Bytes, Status>>,
-    MacaroonInterceptor,
->;
+type Service = InterceptedService<Channel, MacaroonInterceptor>;
 
 /// Convenience type alias for lightning client.
 #[cfg(feature = "lightningrpc")]
@@ -231,22 +225,38 @@ where
     CP: AsRef<Path> + Into<PathBuf> + std::fmt::Debug,
     MP: AsRef<Path> + Into<PathBuf> + std::fmt::Debug,
 {
-    let connector = hyper_rustls::HttpsConnectorBuilder::new()
-        .with_tls_config(tls::config(cert_file).await?)
-        .https_or_http()
-        .enable_http2()
-        .build();
-    let macaroon = load_macaroon(macaroon_file).await?;
-
-    let svc = InterceptedService::new(
-        hyper::Client::builder().build(connector),
-        MacaroonInterceptor { macaroon },
-    );
     let uri =
         Uri::from_str(address.as_str()).map_err(|error| InternalConnectError::InvalidAddress {
             address,
             error: Box::new(error),
         })?;
+
+    let cert_file = cert_file.into();
+
+    let cert_contents = try_map_err!(tokio::fs::read(&cert_file.clone()).await, |error| {
+        InternalConnectError::ReadFile {
+            file: cert_file.clone(),
+            error,
+        }
+    });
+
+    let tls_config = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(cert_contents));
+
+    let connector = Endpoint::new(uri.clone())
+        .unwrap()
+        .origin(uri.clone())
+        .tls_config(tls_config)
+        .map_err(|error| InternalConnectError::ParseCert {
+            file: cert_file,
+            error,
+        })?
+        .connect()
+        .await
+        .unwrap();
+
+    let macaroon = load_macaroon(macaroon_file).await?;
+
+    let svc = InterceptedService::new(connector, MacaroonInterceptor { macaroon });
 
     let client = Client {
         #[cfg(feature = "lightningrpc")]
@@ -273,91 +283,4 @@ where
         state: staterpc::state_client::StateClient::with_origin(svc.clone(), uri.clone()),
     };
     Ok(client)
-}
-
-mod tls {
-    use crate::error::{ConnectError, InternalConnectError};
-    use rustls::{
-        client::{ClientConfig, ServerCertVerified, ServerCertVerifier},
-        Certificate, Error as TLSError, ServerName,
-    };
-    use std::{
-        path::{Path, PathBuf},
-        sync::Arc,
-        time::SystemTime,
-    };
-
-    pub(crate) async fn config(
-        path: impl AsRef<Path> + Into<PathBuf>,
-    ) -> Result<ClientConfig, ConnectError> {
-        Ok(ClientConfig::builder()
-            .with_safe_defaults()
-            .with_custom_certificate_verifier(Arc::new(CertVerifier::load(path).await?))
-            .with_no_client_auth())
-    }
-
-    pub(crate) struct CertVerifier {
-        certs: Vec<Vec<u8>>,
-    }
-
-    impl CertVerifier {
-        pub(crate) async fn load(
-            path: impl AsRef<Path> + Into<PathBuf>,
-        ) -> Result<Self, InternalConnectError> {
-            let contents = try_map_err!(tokio::fs::read(&path).await, |error| {
-                InternalConnectError::ReadFile {
-                    file: path.into(),
-                    error,
-                }
-            });
-            let mut reader = &*contents;
-
-            let certs = try_map_err!(rustls_pemfile::certs(&mut reader), |error| {
-                InternalConnectError::ParseCert {
-                    file: path.into(),
-                    error,
-                }
-            });
-
-            Ok(CertVerifier { certs })
-        }
-    }
-
-    impl ServerCertVerifier for CertVerifier {
-        fn verify_server_cert(
-            &self,
-            end_entity: &Certificate,
-            intermediates: &[Certificate],
-            _server_name: &ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
-            _ocsp_response: &[u8],
-            _now: SystemTime,
-        ) -> Result<ServerCertVerified, TLSError> {
-            let mut certs = intermediates
-                .iter()
-                .map(|c| c.0.clone())
-                .collect::<Vec<Vec<u8>>>();
-            certs.push(end_entity.0.clone());
-            certs.sort();
-
-            let mut our_certs = self.certs.clone();
-            our_certs.sort();
-
-            if self.certs.len() != certs.len() {
-                return Err(TLSError::General(format!(
-                    "Mismatched number of certificates (Expected: {}, Presented: {})",
-                    self.certs.len(),
-                    certs.len()
-                )));
-            }
-            for (c, p) in our_certs.iter().zip(certs.iter()) {
-                if *p != *c {
-                    return Err(TLSError::General(
-                        "Server certificates do not match ours".to_string(),
-                    ));
-                }
-            }
-            Ok(ServerCertVerified::assertion())
-        }
-    }
 }
