@@ -242,17 +242,21 @@ where
 
     let tls_config = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(cert_contents));
 
-    let connector = Endpoint::new(uri.clone())
-        .unwrap()
-        .origin(uri.clone())
-        .tls_config(tls_config)
-        .map_err(|error| InternalConnectError::ParseCert {
-            file: cert_file,
-            error,
-        })?
-        .connect()
-        .await
-        .unwrap();
+    let connector = try_map_err!(Endpoint::new(uri.clone()), |error| {
+        InternalConnectError::InvalidAddress {
+            address: uri.to_string(),
+            error: Box::from(error),
+        }
+    })
+    .origin(uri.clone())
+    .tls_config(tls_config)
+    .map_err(|error| InternalConnectError::ParseCert {
+        file: cert_file,
+        error,
+    })?
+    .connect()
+    .await
+    .unwrap();
 
     let macaroon = load_macaroon(macaroon_file).await?;
 

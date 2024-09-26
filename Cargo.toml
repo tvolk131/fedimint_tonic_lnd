@@ -47,14 +47,14 @@ hyper-rustls = { version = "0.27.2", features = [
     "http2",
     "tls12",
 ], default-features = false }
-tonic = { version = "0.12.2", features = ["transport", "tls"] }
+tonic = { version = "0.12.3", features = ["transport", "tls"] }
 tokio = { version = "1.32.0", features = ["fs"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tower = "0.5.1"
 hyper-util = "0.1.6"
 
 [build-dependencies]
-tonic-build = "0.10.0"
+tonic-build = "0.12.3"
 
 [dev-dependencies]
 tokio = { version = "1.7.1", features = ["rt-multi-thread"] }
