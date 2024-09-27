@@ -224,6 +224,7 @@ dependencies = [
  "prost",
  "rustls",
  "rustls-pemfile 1.0.4",
+ "rustls-webpki",
  "tokio",
  "tokio-stream",
  "tonic",

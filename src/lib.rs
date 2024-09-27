@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use tonic::codegen::InterceptedService;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint};
+use webpki::types::CertificateDer;
 
 type Service = InterceptedService<Channel, MacaroonInterceptor>;
 
@@ -240,7 +241,15 @@ where
         }
     });
 
-    let tls_config = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(cert_contents));
+    let certificate_der: CertificateDer = cert_contents.clone().into();
+
+    let trust_anchor = webpki::anchor_from_trusted_cert(&certificate_der.into_owned())
+        .unwrap()
+        .to_owned();
+
+    let tls_config = ClientTlsConfig::new()
+        .trust_anchor(trust_anchor)
+        .ca_certificate(Certificate::from_pem(cert_contents));
 
     let connector = try_map_err!(Endpoint::new(uri.clone()), |error| {
         InternalConnectError::InvalidAddress {
