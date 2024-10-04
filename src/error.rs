@@ -25,7 +25,7 @@ pub(crate) enum InternalConnectError {
     },
     ParseCert {
         file: PathBuf,
-        error: tonic::transport::Error,
+        error: std::io::Error,
     },
     InvalidAddress {
         address: String,

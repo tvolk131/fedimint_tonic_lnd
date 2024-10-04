@@ -42,7 +42,7 @@ http-body = "0.4.5"
 hyper = { version = "1", features = ["client"], default-features = false }
 prost = "0.13.3"
 rustls = { version = "0.23.7", default-features = false }
-rustls-pemfile = "1.0.0"
+rustls-pemfile = "2.2.0"
 hyper-rustls = { version = "0.27.2", features = [
     "http2",
     "tls12",

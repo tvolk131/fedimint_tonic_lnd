@@ -234,14 +234,7 @@ where
 
     let cert_file = cert_file.into();
 
-    let cert_contents = try_map_err!(tokio::fs::read(&cert_file.clone()).await, |error| {
-        InternalConnectError::ReadFile {
-            file: cert_file.clone(),
-            error,
-        }
-    });
-
-    let certificate_der: CertificateDer = cert_contents.clone().into();
+    let certs = load_certs(cert_file.clone()).await?;
 
     let trust_anchor = webpki::anchor_from_trusted_cert(&certificate_der.into_owned())
         .unwrap()
@@ -296,4 +289,31 @@ where
         state: staterpc::state_client::StateClient::with_origin(svc.clone(), uri.clone()),
     };
     Ok(client)
+}
+
+async fn load_certs(
+    path: impl AsRef<Path> + Into<PathBuf>,
+) -> Result<Vec<CertificateDer<'static>>, InternalConnectError> {
+    let contents = try_map_err!(tokio::fs::read(&path).await, |error| {
+        InternalConnectError::ReadFile {
+            file: path.into(),
+            error,
+        }
+    });
+    let mut reader = &*contents;
+
+    let mut certs = Vec::new();
+    for cert_or in rustls_pemfile::certs(&mut reader) {
+        match cert_or {
+            Ok(cert) => certs.push(cert),
+            Err(error) => {
+                return Err(InternalConnectError::ParseCert {
+                    file: path.into(),
+                    error,
+                });
+            }
+        }
+    }
+
+    Ok(certs)
 }
