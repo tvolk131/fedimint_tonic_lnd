@@ -40,7 +40,7 @@ default = ["all"]
 hex = "0.4.3"
 http-body = "0.4.5"
 hyper = { version = "1", features = ["client"], default-features = false }
-prost = "0.13.1"
+prost = "0.13.3"
 rustls = { version = "0.23.7", default-features = false }
 rustls-pemfile = "1.0.0"
 hyper-rustls = { version = "0.27.2", features = [
@@ -51,14 +51,14 @@ tonic = { version = "0.12.3", features = ["transport", "tls"] }
 tokio = { version = "1.32.0", features = ["fs"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tower = "0.5.1"
-hyper-util = "0.1.6"
+hyper-util = "0.1.9"
 rustls-webpki = "0.102.8"
 
 [build-dependencies]
 tonic-build = "0.12.3"
 
 [dev-dependencies]
-tokio = { version = "1.7.1", features = ["rt-multi-thread"] }
+tokio = { version = "1.32.0", features = ["rt-multi-thread"] }
 
 [[example]]
 name = "get_info"
